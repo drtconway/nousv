@@ -1,0 +1,16 @@
+[package]
+name = "nousv"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arrow = "56.1.0"
+bstr = "1.12.0"
+candle-core = "0.9.1"
+candle-nn = "0.9.1"
+clap = { version = "4.5.47", features = ["derive"] }
+env_logger = "0.11.8"
+log = "0.4.28"
+noodles = { version = "0.101.0", features = ["bam", "bgzf", "core", "fasta", "sam", "vcf"] }
+parquet = "56.1.0"
+tqdm = "0.8.0"
