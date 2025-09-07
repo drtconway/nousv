@@ -1,5 +1,6 @@
 
 /// Returns a Vec<Vec<usize>> where each vector is a cluster.
+#[allow(dead_code)]
 pub fn dbscan_1d_sorted<T, F: Fn(&T) -> f64>(
     data: &[T],
     min_points: usize,
@@ -61,6 +62,7 @@ mod tests {
         #[derive(Debug)]
         struct Point { x: f64, y: f64 }
         let data = vec![Point { x: 0.0, y: 1.0 }, Point { x: 0.1, y: 2.0 }, Point { x: 1.0, y: 3.0 }];
+        let _ = data[0].y;
         let clusters = dbscan_1d_sorted(&data, 2, 0.2, |p| p.x);
         assert_eq!(clusters.len(), 1);
         assert_eq!(clusters[0], vec![0, 1]);

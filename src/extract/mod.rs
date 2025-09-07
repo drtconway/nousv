@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::hash::Hash;
 use std::io::{self, BufReader};
 use std::sync::Arc;
 
@@ -29,9 +28,7 @@ pub fn extract_features(bam_path: &str, features_path: &str) -> io::Result<()> {
     let mut writer = FeatureWriter::new(features_path);
 
     let mut current_contig_id = 0;
-    let mut last_position = 0;
     let mut current_events = Vec::new();
-
 
     for result in reader.records().tqdm() {
         let record = result?;
@@ -47,11 +44,9 @@ pub fn extract_features(bam_path: &str, features_path: &str) -> io::Result<()> {
         if contig_id != current_contig_id || current_events.len() > 10000 {
             process_events(current_contig_id, current_events, &mut writer)?;
             current_contig_id = contig_id;
-            last_position = 0;
             current_events = Vec::new();
         }
         let pos = record.alignment_start().unwrap()?.get() as i32;
-        last_position = pos;
         let cigar = record.cigar();
         let itr = cigar::AugmentedCigarIter::new(Box::new(cigar.iter()), pos)
             .flat_map(|cig| lift(cig.map(Event::events)));
@@ -98,7 +93,7 @@ fn process_events(
         let right = if i + w <= n { i + w } else { n };
         let pos = events[i].position;
         let features = process_window(w, i - left, &events[left..right]);
-        writer.add_row(contig_id, pos, features);
+        writer.add_row(contig_id, pos, features)?;
     }
     writer.flush_current()?;
     Ok(())
@@ -220,9 +215,14 @@ impl FeatureWriter {
         }
     }
 
-    pub fn add_row(&mut self, chrom_id: usize, position: i32, features: Vec<f32>) {
+    pub fn add_row(
+        &mut self,
+        chrom_id: usize,
+        position: i32,
+        features: Vec<f32>,
+    ) -> std::io::Result<()> {
         if chrom_id != self.current_chrom_id {
-            self.flush_current();
+            self.flush_current()?;
             self.chrom_id_builder = PrimitiveBuilder::new();
             self.position_builder = PrimitiveBuilder::new();
             self.feature_builder = Vec::new();
@@ -236,6 +236,8 @@ impl FeatureWriter {
             }
             self.feature_builder[i].append_value(feature);
         }
+
+        Ok(())
     }
 
     fn flush_current(&mut self) -> std::io::Result<()> {
@@ -318,12 +320,14 @@ impl InnerFeatureWriter {
         Ok(Self { writer, schema })
     }
 
+    #[allow(dead_code)]
     pub fn write(&mut self, batch: &RecordBatch) -> std::io::Result<()> {
         self.writer.write(batch)?;
         Ok(())
     }
 }
 
+#[allow(dead_code)]
 pub fn save_feature_vectors_to_parquet(
     feature_vectors: &[Vec<f32>],
     path: &str,
@@ -368,6 +372,7 @@ pub fn save_feature_vectors_to_parquet(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn save_positions_to_parquet(
     positions: &[i32],
     path: &str,

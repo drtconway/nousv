@@ -174,6 +174,12 @@ impl<R: io::BufRead> VariantFeatureIter<R> {
         }
         Ok(Some((chrom_id, begin, end, svtype, alleles)))
     }
+
+    #[allow(dead_code)]
+    pub fn names(&self) -> &[String] {
+        &self.chrom_names
+    }
+
 }
 
 impl<R: BufRead> Iterator for VariantFeatureIter<R> {

@@ -13,6 +13,7 @@ impl<Item: HeapItem> Heap<Item> {
         Heap { items: Vec::new() }
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.items.clear();
     }
@@ -41,10 +42,12 @@ impl<Item: HeapItem> Heap<Item> {
         self.items.first()
     }
 
+    #[allow(dead_code)]
     pub fn iter(&self) -> impl Iterator<Item = &Item> {
         self.items.iter()
     }
 
+    #[allow(dead_code)]
     pub fn change_front(&mut self, item: Item) {
         self.items[0] = item;
         self.downheap(1);

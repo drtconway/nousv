@@ -1,16 +1,17 @@
 use candle_core::DType;
 use candle_core::{Device, Result as CandleResult, Tensor};
 use candle_nn::{
-    Activation, AdamW, Linear, Module, Optimizer, ParamsAdamW, Sequential, VarBuilder, VarMap, seq,
+    Activation, AdamW, Module, Optimizer, ParamsAdamW, Sequential, VarBuilder, VarMap, seq,
 };
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
-use std::collections::HashMap;
+use tqdm::Iter;
 use std::fs::File;
 
 struct VariationalAutoEncoder {
     encoder: Sequential,
     decoder: Sequential,
     optimizer: AdamW,
+    device: Device,
 }
 
 impl VariationalAutoEncoder {
@@ -28,7 +29,7 @@ impl VariationalAutoEncoder {
             .add(candle_nn::linear(128, num_features, vb.pp("ln4"))?);
 
         let params = ParamsAdamW {
-            lr: 0.1,
+            lr: 0.0001,
             ..Default::default()
         };
 
@@ -38,7 +39,13 @@ impl VariationalAutoEncoder {
             encoder,
             decoder,
             optimizer,
+            device: device.clone(),
         })
+    }
+
+    #[allow(dead_code)]
+    fn device(&self) -> &Device {
+        &self.device
     }
 }
 
@@ -48,6 +55,7 @@ pub fn train_vae_from_parquet(
     let epochs = 10;
     let batch_size = 32;
     let latent_dim = 48;
+    let device = Device::Cpu;
 
     // Read Parquet file into Arrow RecordBatch
     let file = File::open(path).unwrap();
@@ -72,10 +80,41 @@ pub fn train_vae_from_parquet(
         }
     }
 
-    let device = Device::Cpu;
 
+    // Column-wise normalization
     let num_features = features[0].len();
     let num_samples = features.len();
+    let mut means = vec![0.0f32; num_features];
+    let mut stds = vec![0.0f32; num_features];
+
+    // Compute means
+    for row in &features {
+        for (i, &val) in row.iter().enumerate() {
+            means[i] += val;
+        }
+    }
+    for m in &mut means {
+        *m /= num_samples as f32;
+    }
+
+    // Compute stds
+    for row in &features {
+        for (i, &val) in row.iter().enumerate() {
+            stds[i] += (val - means[i]).powi(2);
+        }
+    }
+    for s in &mut stds {
+        *s = (*s / num_samples as f32).sqrt();
+        if *s == 0.0 { *s = 1.0; } // Prevent division by zero
+    }
+
+    // Normalize
+    for row in &mut features {
+        for (i, val) in row.iter_mut().enumerate() {
+            *val = (*val - means[i]) / stds[i];
+        }
+    }
+
     let flat: Vec<f32> = features.into_iter().flatten().collect();
     let xs = Tensor::from_vec(flat, (num_samples, num_features), &device)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
@@ -84,10 +123,10 @@ pub fn train_vae_from_parquet(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     let num_batches = (num_samples + batch_size - 1) / batch_size;
 
-    for epoch in 0..epochs {
+    for epoch in (0..epochs).tqdm(){
         (|| {
             let mut total_loss = 0.0;
-            for batch_idx in 0..num_batches {
+            for batch_idx in (0..num_batches).tqdm() {
                 let start = batch_idx * batch_size;
                 let end = ((batch_idx + 1) * batch_size).min(num_samples);
                 let batch = xs.narrow(0, start, end - start)?;
@@ -107,6 +146,7 @@ pub fn train_vae_from_parquet(
 
                 // Loss: reconstruction + KL
                 let recon_loss = recon.sub(&batch)?.powf(2.0)?.mean_all()?;
+                //eprintln!("loss: {:?}", recon_loss);
                 let kl = ((logvar.clone().exp()?.add(&mu.powf(2.0)?)?.neg()? + 1.0)?
                     .add(&logvar.clone())? - 0.5)?
                     .mean_all()?;
